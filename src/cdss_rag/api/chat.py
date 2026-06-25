@@ -2,11 +2,9 @@ import json
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
-
 from ..schemas.chat import ChatRequest
 from ..schemas.common import ApiResponse
 from ..services.chat import chat_service
-
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -19,18 +17,17 @@ def _sse_format(event: str, data: dict) -> str:
 @router.post("")
 async def chat(req: ChatRequest):
     """
-    流式： 返回 SSE 流 (Content-Type: text/event-stream)
+    流式: 返回 SSE 流 (Content-Type: text/event-stream)
     非流式: 返回 JSON {code, message, data}
     """
     if req.stream:
         async def event_generator():
             try:
                 async for evt in chat_service.chat_stream(req):
-                    yield _sse_format(evt["event", evt["data"]])
+                    yield _sse_format(evt["event"], evt["data"])
             except Exception as e:
                 yield _sse_format("error", {"message": str(e)})
 
-        
         return StreamingResponse(
             event_generator(),
             media_type="text/event-stream",

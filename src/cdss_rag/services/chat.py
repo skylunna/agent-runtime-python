@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 class ChatService:
-    """对话服务 - Step 4 会接入 Agent + 工具调用"""
+    """对话服务 """
 
     async def chat(self, req: ChatRequest) -> ChatResponse:
         logger.info(f"[STUB] Chat (non-stream): session={req.session_id}")
