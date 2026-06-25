@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.13'",
@@ -22,6 +22,7 @@ dependencies = [
     { name = "langchain-text-splitters" },
     { name = "numpy" },
     { name = "openai" },
+    { name = "psycopg", extra = ["binary", "pool"] },
     { name = "pypdf" },
     { name = "python-dotenv" },
     { name = "sentence-transformers" },
@@ -49,6 +50,7 @@ requires-dist = [
     { name = "langchain-text-splitters", specifier = ">=0.3.0" },
     { name = "numpy", specifier = ">=2.5.0" },
     { name = "openai", specifier = ">=1.0.0" },
+    { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.3.4" },
     { name = "pypdf", specifier = ">=5.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "sentence-transformers", specifier = ">=3.0.0" },
@@ -1996,6 +1998,9 @@ wheels = [
 [package.optional-dependencies]
 binary = [
     { name = "psycopg-binary", marker = "implementation_name != 'pypy'" },
+]
+pool = [
+    { name = "psycopg-pool" },
 ]
 
 [[package]]

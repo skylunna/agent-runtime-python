@@ -1,0 +1,6 @@
+{
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/src"
+  ],
+  "env.PYTHONPATH": "${workspaceFolder}/src"
+}

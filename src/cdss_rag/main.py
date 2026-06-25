@@ -10,7 +10,7 @@ from .core.errors import (
     cdss_exception_handler,
     generic_exception_handler,
 )
-from .api import health, ingest, retrieve, chat
+from .api import health, ingest, retrieve, chat, kb
 
 
 @asynccontextmanager
@@ -44,3 +44,4 @@ app.include_router(health.router)
 app.include_router(ingest.router, prefix="/api/v1")
 app.include_router(retrieve.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
+app.include_router(kb.router, prefix="/api/v1")
