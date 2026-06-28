@@ -216,7 +216,152 @@ class Agent:
         except asyncio.TimeoutError:
             from .tools import ToolResult
             return ToolResult(False, None, f"Tool {name} timeout after {self.config.tool_timeout_sec}s")
+    
+    async def run_with_config(
+        self,
+        user_messages: list[dict],
+        ctx: dict,
+        system_prompt: str,
+        model: str | None = None,
+        temperature: float = 0.1,
+        max_iterations: int = 5,
+        tools_filter: list[str] | None = None,
+    ) -> AsyncIterator[AgentEvent]:
+        """
+        带动态配置的 Agent 执行
+        - system_prompt: 来自 Java agent.system_prompt
+        - tools_filter: 只暴露指定工具，None表示全部
+        """
+        messages = [
+            {"role": "system", "content": system_prompt},
+            *user_messages,
+        ]
 
+        # 过滤工具
+        if tools_filter:
+            tools = [t for t in TOOL_DEFINITIONS
+                     if t["function"]["name"] in tools_filter]
+        else:
+            tools = TOOL_DEFINITIONS
+
+        effective_model = model or self.config.model
+
+        for iteration in range(max_iterations):
+            logger.info(f"[Agent] Iteration {iteration + 1}/{max_iterations}")
+
+            try:
+                resp = await self.client.chat.completions.create(
+                    model=effective_model,
+                    messages=messages,
+                    tools=tools if tools else None, # 空列表时不传 tools
+                    temperature=temperature,
+                )
+            except Exception as e:
+                logger.exception("LLM call failed in decision phase ")
+                yield AgentEvent("error", {"message": f"LLM error: {e}"})
+                return
+            
+            choice = resp.choices[0]
+            msg = choice.message
+
+            # 工具调用分支
+            if msg.tool_calls:
+                assistant_msg = {
+                    "role": "assistant",
+                    "content": msg.content or "",
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            }
+                        }
+                        for tc in msg.tool_calls
+                    ]
+                }
+                messages.append(assistant_msg)
+
+                tool_tasks = []
+                for tc in msg.tool_calls:
+                    yield AgentEvent("tool_call", {
+                        "tool_call_id": tc.id,
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments,
+                    })
+                    tool_tasks.append(self._exec_tool_with_timeout(
+                        tc.function.name,
+                        tc.function.arguments,
+                        ctx,
+                    ))
+
+                results = await asyncio.gather(*tool_tasks, return_exceptions=True)
+
+                for tc, result in zip(msg.tool_calls, results):
+                    if isinstance(result, Exception):
+                        tool_content = json.dumps(
+                            {"status": "error", "error": str(result)},
+                            ensure_ascii=False
+                        )
+                    else:
+                        tool_content = result.to_llm_string()
+
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": tool_content,
+                    })
+
+                    yield AgentEvent("tool_result", {
+                        "tool_call_id": tc.id,
+                        "name": tc.function.name,
+                        "content": tool_content,
+                    })
+                continue
+
+             # 最终回答分支(流式)
+            full_answer = ""
+            prompt_tokens = 0
+            completion_tokens = 0
+            try:
+                stream = await self.client.chat.completions.create(
+                    model=effective_model,
+                    messages=messages,
+                    tools=tools if tools else None,
+                    temperature=temperature,
+                    stream=True,
+                    stream_options={"include_usage": True},  # 让最后一个 chunk 包含 usage
+                )
+                async for chunk in stream:
+                    if chunk.choices:
+                        delta = chunk.choices[0].delta
+                        if delta.content:
+                            full_answer += delta.content
+                            yield AgentEvent("token", {"content": delta.content})
+                    # usage 信息在最后一个 chunk
+                    if chunk.usage:
+                        prompt_tokens = chunk.usage.prompt_tokens
+                        completion_tokens = chunk.usage.completion_tokens
+
+            except Exception as e:
+                logger.exception("LLM call failed in answer phase")
+                yield AgentEvent("error", {"message": f"LLM error: {e}"})
+                return
+
+            yield AgentEvent("done", {
+                "iterations": iteration + 1,
+                "total_answer_len": len(full_answer),
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
+            })
+            return
+
+        yield AgentEvent("done", {
+            "iterations": max_iterations,
+            "warning": "max_iterations_reached",
+        })
 
 # 模块级单例
 agent = Agent()
