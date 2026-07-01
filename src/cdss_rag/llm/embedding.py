@@ -3,6 +3,7 @@ import threading
 from typing import List
 import numpy as np
 from sentence_transformers import SentenceTransformer
+from openai import OpenAI 
 
 
 from ..core.config import settings
@@ -36,11 +37,18 @@ class EmbeddingService:
             return
         self._initialized = True
 
-        logger.info(f"Loading embedding model: {settings.embedding_model}")
+        logger.info(f"Initializing cloud embedding client for model: {settings.embedding_model}")
+
+        # 初始化 OpenAI 兼容客户端
+        self.client = OpenAI(
+            api_key=settings.embedding_api_key,
+            base_url=settings.embedding_base_url,
+        )
         self.model_name = settings.embedding_model
-        self.model = SentenceTransformer(self.model_name)
-        self.dim = self.model.get_sentence_embedding_dimension()
-        logger.info(f"Embedding model loaded, dim={self.dim}")
+        # 云端 API 无法动态获取维度，直接从配置读取
+        self.dim = settings.embedding_dim
+
+        logger.info(f"Cloud embedding client initialized, dim={self.dim}")
 
     def encode(self, texts: List[str]) -> np.ndarray:
         """
@@ -49,12 +57,23 @@ class EmbeddingService:
         """
         if not texts:
             return np.array([])
-        return self.model.encode(
-            texts,
-            normalize_embeddings=True,
-            show_progress_bar=False,
+
+        # 1. 调用云端API
+        response = self.client.embeddings.create(
+            model=self.model_name,
+            input=texts,
         )
-    
+        # 2. 提取向量并转换为 numpy array
+        embeddings = [item.embedding for item in response.data]
+        vectors = np.array(embeddings, dtype=np.float32)
+
+        # 3. 手动进行 L2 归一化
+        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+        norms[norms == 0] = 1 # 防止 除以 0
+        vectors = vectors / norms
+
+        return vectors
+
 
     def encode_one(self, text: str) -> np.ndarray:
         """编码单个文本"""
