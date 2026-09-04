@@ -40,7 +40,7 @@ class RetrievalService:
                 content=r["content"],
                 document=r["document_title"],
                 page=r["page"],
-                score=float(r["score"]),
+                score=float(r["score"] or 0.0),
             )
             for r in rows
         ]

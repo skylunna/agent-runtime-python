@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     embedding_api_key: str
     embedding_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1" 
     embedding_model: str = "text-embedding-v3"
-    embedding_dim: int = 512
+    embedding_dim: int = 1024
 
 
 settings = Settings()

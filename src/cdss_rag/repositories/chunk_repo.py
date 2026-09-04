@@ -58,6 +58,7 @@ class ChunkRepo:
                 WHERE c.kb_id = %s
                   AND c.deleted_at IS NULL
                   AND d.deleted_at IS NULL
+                  AND c.embedding IS NOT NULL
                 ORDER BY c.embedding <=> %s::vector
                 LIMIT %s
                 """,
